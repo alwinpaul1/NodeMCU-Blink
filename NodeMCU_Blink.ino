@@ -60,6 +60,7 @@ void fetchSunTimes() {
   if (httpCode == HTTP_CODE_OK) {
     String payload = http.getString();
     Serial.println("HTTP request successful. Parsing API response...");
+    // Serial.println(payload);  // Commented out to remove API response from Serial Monitor
     deserializeAndExecute(payload);
   } else {
     Serial.print("Failed to retrieve data. HTTP response code: ");
@@ -71,8 +72,13 @@ void fetchSunTimes() {
 void displayCurrentTime() {
   time_t now = time(nullptr);
   struct tm *tm_now = localtime(&now);
+  
+  // Create a buffer to hold the formatted time
   char buf[64];
-  strftime(buf, sizeof(buf), "%c", tm_now);
+  
+  // Format time as 12-hour clock with AM/PM
+  strftime(buf, sizeof(buf), "%I:%M:%S %p", tm_now);
+  
   Serial.print("Current time: ");
   Serial.println(buf);
 }
@@ -85,7 +91,16 @@ void deserializeAndExecute(String json) {
     String sunrise = doc["results"]["sunrise"].as<String>();
     String sunset = doc["results"]["sunset"].as<String>();
 
-    if (isWithinSunsetSunrise(sunrise, sunset)) {
+    // Extract only the time portion and convert it to 12-hour format
+    String formattedSunrise = formatTime(sunrise);
+    String formattedSunset = formatTime(sunset);
+
+    Serial.print("Sunrise (UTC): ");
+    Serial.println(formattedSunrise);
+    Serial.print("Sunset (UTC): ");
+    Serial.println(formattedSunset);
+
+    if (isWithinSunsetSunrise(formattedSunrise, formattedSunset)) {
       Serial.println("It's night time. LED will twinkle.");
       startTwinkling();
     } else {
@@ -96,6 +111,17 @@ void deserializeAndExecute(String json) {
     Serial.print("JSON deserialization failed: ");
     Serial.println(error.c_str());
   }
+}
+
+String formatTime(String timeStr) {
+  struct tm tm;
+  strptime(timeStr.c_str(), "%Y-%m-%dT%H:%M:%S", &tm);  // Parse the full ISO 8601 datetime string
+
+  // Convert to 12-hour format with AM/PM
+  char buffer[12];
+  strftime(buffer, sizeof(buffer), "%I:%M:%S %p", &tm);
+  
+  return String(buffer);
 }
 
 bool isWithinSunsetSunrise(String sunrise, String sunset) {
