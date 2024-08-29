@@ -413,6 +413,9 @@ void handleRoot() {
                 });
                 ledMessage.classList.toggle("dark-mode");
             }
+
+            // Refresh page every 3 seconds
+            setInterval(refreshPage, 3000);
         </script>
     </head>
     <body>
