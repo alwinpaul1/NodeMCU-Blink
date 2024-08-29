@@ -17,150 +17,188 @@ const long apiInterval = 60000;    // interval to refresh API data (milliseconds
 bool isTwinkling = false;          // state to track twinkling status
 
 void setup() {
-  Serial.begin(115200);
-  pinMode(2, OUTPUT);  // Set GPIO 2 as an output for the LED
-  connectToWiFi();     // Connect to WiFi network
-  configTime("CET-1CEST,M3.5.0,M10.5.0/3", "de.pool.ntp.org"); // Set timezone and NTP server for Germany
-  client.setInsecure();  // Skip SSL certificate verification for testing purposes
+    Serial.begin(115200);
+    pinMode(2, OUTPUT);  // Set GPIO 2 as an output for the LED
+    connectToWiFi();     // Connect to WiFi network
+    configTime("CET-1CEST,M3.5.0,M10.5.0/3", "de.pool.ntp.org"); // Set timezone and NTP server for Germany
+    client.setInsecure();  // Skip SSL certificate verification for testing purposes
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+    unsigned long currentMillis = millis();
 
-  if (WiFi.status() == WL_CONNECTED) {
-    if (currentMillis - previousMillis >= apiInterval) {  // Update every 60 seconds
-      previousMillis = currentMillis;
-      fetchSunTimes();  // Fetch sunrise and sunset times
-      displayCurrentTime();  // Display current time
+    if (WiFi.status() == WL_CONNECTED) {
+        if (currentMillis - previousMillis >= apiInterval) {  // Update every 60 seconds
+            previousMillis = currentMillis;
+            fetchSunTimes();  // Fetch sunrise and sunset times
+            displayCurrentTime();  // Display current time
+        }
+    } else {
+        Serial.println("WiFi not connected. Reconnecting...");
+        connectToWiFi();
     }
-  } else {
-    Serial.println("WiFi not connected. Reconnecting...");
-    connectToWiFi();
-  }
-  handleTwinkling();  // Handle LED twinkling based on the last known state
+    handleTwinkling();  // Handle LED twinkling based on the last known state
 }
 
 void connectToWiFi() {
-  WiFi.begin(ssid, password);
-  Serial.println("Attempting to connect to WiFi...");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected successfully.");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+    WiFi.begin(ssid, password);
+    Serial.println("Attempting to connect to WiFi...");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+    }
+    Serial.println("\nWiFi connected successfully.");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
 }
 
 void fetchSunTimes() {
-  HTTPClient http;
-  http.begin(client, apiURL);  // Begin preparing a connection
-  int httpCode = http.GET();   // Perform the HTTP GET request
+    HTTPClient http;
+    http.begin(client, apiURL);  // Begin preparing a connection
+    int httpCode = http.GET();   // Perform the HTTP GET request
 
-  if (httpCode == HTTP_CODE_OK) {
-    String payload = http.getString();
-    Serial.println("HTTP request successful. Parsing API response...");
-    // Serial.println(payload);  // Commented out to remove API response from Serial Monitor
-    deserializeAndExecute(payload);
-  } else {
-    Serial.print("Failed to retrieve data. HTTP response code: ");
-    Serial.println(httpCode);
-  }
-  http.end();  // End the connection
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.println("HTTP request successful. Parsing API response...");
+        deserializeAndExecute(payload);
+    } else {
+        Serial.print("Failed to retrieve data. HTTP response code: ");
+        Serial.println(httpCode);
+    }
+    http.end();  // End the connection
 }
 
 void displayCurrentTime() {
-  time_t now = time(nullptr);
-  struct tm *tm_now = localtime(&now);
-  
-  // Create a buffer to hold the formatted time
-  char buf[64];
-  
-  // Format time as 12-hour clock with AM/PM
-  strftime(buf, sizeof(buf), "%I:%M:%S %p", tm_now);
-  
-  Serial.print("Current time: ");
-  Serial.println(buf);
+    time_t now = time(nullptr);
+    struct tm *tm_now = localtime(&now);
+
+    // Create a buffer to hold the formatted time
+    char buf[64];
+
+    // Format time as 12-hour clock with AM/PM
+    strftime(buf, sizeof(buf), "%I:%M:%S %p", tm_now);
+
+    Serial.print("Current time: ");
+    Serial.println(buf);
 }
 
 void deserializeAndExecute(String json) {
-  StaticJsonDocument<1024> doc;
-  DeserializationError error = deserializeJson(doc, json);
+    StaticJsonDocument<1024> doc;
+    DeserializationError error = deserializeJson(doc, json);
 
-  if (!error) {
-    String sunrise = doc["results"]["sunrise"].as<String>();
-    String sunset = doc["results"]["sunset"].as<String>();
+    if (!error) {
+        String sunriseUTC = doc["results"]["sunrise"].as<String>();
+        String sunsetUTC = doc["results"]["sunset"].as<String>();
 
-    // Extract only the time portion and convert it to 12-hour format
-    String formattedSunrise = formatTime(sunrise);
-    String formattedSunset = formatTime(sunset);
+        // Convert the UTC times to local time (CET/CEST)
+        String sunriseCET = convertUTCToLocalTime(sunriseUTC);
+        String sunsetCET = convertUTCToLocalTime(sunsetUTC);
 
-    Serial.print("Sunrise (UTC): ");
-    Serial.println(formattedSunrise);
-    Serial.print("Sunset (UTC): ");
-    Serial.println(formattedSunset);
+        Serial.print("Sunrise (Local): ");
+        Serial.println(sunriseCET);
+        Serial.print("Sunset (Local): ");
+        Serial.println(sunsetCET);
 
-    if (isWithinSunsetSunrise(formattedSunrise, formattedSunset)) {
-      Serial.println("It's night time. LED will twinkle.");
-      startTwinkling();
+        if (isWithinSunsetSunrise(sunriseCET, sunsetCET)) {
+            Serial.println("It's night time. LED will twinkle.");
+            startTwinkling();
+        } else {
+            Serial.println("Daytime. LED will be off.");
+            stopTwinkling();
+        }
     } else {
-      Serial.println("Daytime. LED will be off.");
-      stopTwinkling();
+        Serial.print("JSON deserialization failed: ");
+        Serial.println(error.c_str());
     }
-  } else {
-    Serial.print("JSON deserialization failed: ");
-    Serial.println(error.c_str());
-  }
 }
 
-String formatTime(String timeStr) {
-  struct tm tm;
-  strptime(timeStr.c_str(), "%Y-%m-%dT%H:%M:%S", &tm);  // Parse the full ISO 8601 datetime string
+String convertUTCToLocalTime(String timeStr) {
+    struct tm tm;
+    char ampm[3]; // Buffer to store AM/PM
+    strptime(timeStr.c_str(), "%Y-%m-%dT%I:%M:%S", &tm);  // Parse the ISO 8601 datetime string without AM/PM
+    sscanf(timeStr.c_str(), "%*[^T]T%*d:%*d:%*d%2s", ampm);  // Extract the AM/PM part
 
-  // Convert to 12-hour format with AM/PM
-  char buffer[12];
-  strftime(buffer, sizeof(buffer), "%I:%M:%S %p", &tm);
-  
-  return String(buffer);
+    // Adjust for AM/PM manually
+    if (strcasecmp(ampm, "PM") == 0 && tm.tm_hour < 12) {
+        tm.tm_hour += 12;  // Convert PM times to 24-hour format
+    } else if (strcasecmp(ampm, "AM") == 0 && tm.tm_hour == 12) {
+        tm.tm_hour = 0;  // Convert 12 AM to 00:00 in 24-hour format
+    }
+
+    // Convert time to UTC timestamp
+    time_t utcTime = mktime(&tm);
+
+    // Manually adjust the time for CET/CEST
+    time_t localTime;
+    if (tm.tm_isdst > 0) {  // Check if daylight saving time is in effect
+        localTime = utcTime + 2 * 3600;  // Add 2 hours for CEST
+    } else {
+        localTime = utcTime + 1 * 3600;  // Add 1 hour for CET
+    }
+
+    // Convert back to tm structure
+    struct tm *tm_local = localtime(&localTime);
+
+    // Format time as 24-hour clock
+    char buffer[12];
+    strftime(buffer, sizeof(buffer), "%H:%M:%S", tm_local);
+
+    return String(buffer);
 }
 
 bool isWithinSunsetSunrise(String sunrise, String sunset) {
-  struct tm sunr = {};
-  struct tm suns = {};
-  strptime(sunrise.c_str(), "%I:%M:%S %p", &sunr);
-  strptime(sunset.c_str(), "%I:%M:%S %p", &suns);
+    struct tm sunr = {};
+    struct tm suns = {};
+    strptime(sunrise.c_str(), "%H:%M:%S", &sunr);  // Parse as 24-hour format
+    strptime(sunset.c_str(), "%H:%M:%S", &suns);  // Parse as 24-hour format
 
-  time_t now = time(nullptr);
-  struct tm *tm_now = localtime(&now);
-  sunr.tm_year = suns.tm_year = tm_now->tm_year;
-  sunr.tm_mon = suns.tm_mon = tm_now->tm_mon;
-  sunr.tm_mday = suns.tm_mday = tm_now->tm_mday;
+    time_t now = time(nullptr);
+    struct tm *tm_now = localtime(&now);
 
-  time_t sunriseTime = mktime(&sunr);
-  time_t sunsetTime = mktime(&suns);
+    // Ensure the year, month, and day are the same for accurate comparison
+    sunr.tm_year = suns.tm_year = tm_now->tm_year;
+    sunr.tm_mon = suns.tm_mon = tm_now->tm_mon;
+    sunr.tm_mday = suns.tm_mday = tm_now->tm_mday;
 
-  return now >= sunsetTime || now < sunriseTime;
+    time_t sunriseTime = mktime(&sunr);
+    time_t sunsetTime = mktime(&suns);
+
+    Serial.print("Current Time (24h format): ");
+    Serial.print(tm_now->tm_hour);
+    Serial.print(":");
+    Serial.print(tm_now->tm_min);
+    Serial.print(":");
+    Serial.println(tm_now->tm_sec);
+
+    // Correct logic to determine if it's nighttime or daytime
+    if (now >= sunriseTime && now < sunsetTime) {
+        return false;  // It's daytime
+    } else {
+        return true;  // It's nighttime
+    }
 }
 
 void startTwinkling() {
-  isTwinkling = true;
-  Serial.println("Starting twinkling effect...");
-  previousMillis = millis(); // reset the timer for LED blinking
+    isTwinkling = true;
+    Serial.println("Starting twinkling effect...");
+    previousMillis = millis(); // reset the timer for LED blinking
 }
 
 void stopTwinkling() {
-  isTwinkling = false;
-  Serial.println("Stopping twinkling effect. LED is off.");
-  digitalWrite(2, LOW);  // Ensure LED is off when it's not twinkling time
+    isTwinkling = false;
+    Serial.println("Stopping twinkling effect. LED is off.");
+    digitalWrite(2, LOW);  // Ensure LED is off when it's not twinkling time
 }
 
 void handleTwinkling() {
-  if (isTwinkling) {
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-      previousMillis = currentMillis;
-      int ledState = digitalRead(2);
-      digitalWrite(2, !ledState);
+    if (isTwinkling) {
+        unsigned long currentMillis = millis();
+        if (currentMillis - previousMillis >= interval) {
+            previousMillis = currentMillis;
+            int ledState = digitalRead(2);
+            digitalWrite(2, !ledState);  // Toggle the LED state to create twinkling effect
+        }
+    } else {
+        digitalWrite(2, LOW);  // Ensure the LED is completely off during daytime
     }
-  }
 }
