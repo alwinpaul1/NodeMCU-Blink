@@ -18,6 +18,7 @@ unsigned long previousMillis = 0;  // will store last time API was fetched or LE
 const long interval = 200;         // interval at which to blink (milliseconds)
 const long apiInterval = 60000;    // interval to refresh API data (milliseconds)
 bool isTwinkling = false;          // state to track twinkling status
+bool lastTwinklingState = false;   // track the last state to avoid duplicate messages
 
 String currentTimeStr;
 String sunriseTimeStr;
@@ -117,13 +118,15 @@ void deserializeAndExecute(String json) {
         Serial.print("Sunset (Local): ");
         Serial.println(sunsetTimeStr);
 
-        if (isWithinSunsetSunrise(sunriseTimeStr, sunsetTimeStr)) {
+        bool isNightTime = isWithinSunsetSunrise(sunriseTimeStr, sunsetTimeStr);
+        if (isNightTime && !lastTwinklingState) {
             Serial.println("Night Time. LED will be On.\nStart Twinkling Effect. LED will be On.");
             startTwinkling();
-        } else {
+        } else if (!isNightTime && lastTwinklingState) {
             Serial.println("Daytime. LED will be Off.\nStopping Twinkling Effect. LED is Off.");
             stopTwinkling();
         }
+        lastTwinklingState = isNightTime;
     } else {
         Serial.print("JSON deserialization failed: ");
         Serial.println(error.c_str());
