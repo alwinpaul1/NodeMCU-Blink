@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-const char* ssid = "";  // WiFi SSID
-const char* password = "";  // WiFi password
+const char* ssid = "Wi-Fi";  // WiFi SSID
+const char* password = "LetsBak3It!1337";  // WiFi password
 
 String apiURL = "https://api.sunrise-sunset.org/json?lat=51.76625442504883&lng=14.3240385055542&formatted=0";
 
