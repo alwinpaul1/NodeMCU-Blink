@@ -19,6 +19,7 @@ bool isTwinkling = false;          // state to track twinkling status
 void setup() {
     Serial.begin(115200);
     pinMode(2, OUTPUT);  // Set GPIO 2 as an output for the LED
+    digitalWrite(2, HIGH);  // Turn off the LED initially
     connectToWiFi();     // Connect to WiFi network
     configTime("CET-1CEST,M3.5.0,M10.5.0/3", "de.pool.ntp.org"); // Set timezone and NTP server for Germany
     client.setInsecure();  // Skip SSL certificate verification for testing purposes
@@ -187,7 +188,7 @@ void startTwinkling() {
 void stopTwinkling() {
     isTwinkling = false;
     Serial.println("Stopping twinkling effect. LED is off.");
-    digitalWrite(2, LOW);  // Ensure LED is off when it's not twinkling time
+    digitalWrite(2, HIGH);  // Ensure LED is off when it's not twinkling time
 }
 
 void handleTwinkling() {
@@ -199,6 +200,6 @@ void handleTwinkling() {
             digitalWrite(2, !ledState);  // Toggle the LED state to create twinkling effect
         }
     } else {
-        digitalWrite(2, LOW);  // Ensure the LED is completely off during daytime
+        digitalWrite(2, HIGH);  // Ensure the LED is completely off during daytime
     }
 }
